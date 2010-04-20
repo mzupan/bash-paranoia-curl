@@ -1,0 +1,163 @@
+diff -rupN bash-3.2/bashhist.c bash-3.2-curl/bashhist.c
+--- bash-3.2/bashhist.c	2010-04-20 15:11:37.000000000 -0400
++++ bash-3.2-curl/bashhist.c	2010-04-20 15:10:47.000000000 -0400
+@@ -50,6 +50,12 @@
+ #include <glob/glob.h>
+ #include <glob/strmatch.h>
+ 
++#ifdef PARANOIA
++  #include <curl/curl.h>
++  char sessionStr[81];
++#endif
++
++
+ #if defined (READLINE)
+ #  include "bashline.h"
+ extern int rl_done, rl_dispatching;	/* should really include readline.h */
+@@ -864,6 +870,50 @@ int paranoia_log_through_utmp(const char
+ 	openlog("bash", LOG_NDELAY, LOG_DAEMON);
+ 	syslog(LOG_NOTICE, "user: %s as %s from ip: %s:%s execs: '%s'\n", ut->ut_user,pw->pw_name, ut->ut_host, ut->ut_line,line);
+ 	closelog();
++
++    // do the curl thing now
++    FILE *fp;
++    fp = fopen("/etc/bash.conf", "r");
++    if (fp != NULL) {
++        char *url = get_config(fp, "URL");
++
++        CURL *curl;
++        CURLcode res;
++
++        curl = curl_easy_init();
++        if (curl) {
++            // grabbing the hostname
++            char hostname[256];
++            gethostname (hostname, 255);
++
++            if (strlen(sessionStr) == 0) {
++                srand(time(0));
++                static const char text[] = "abcdefghijklmnopqrstuvwxyz"
++                                            "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
++
++                int i, len = 81;
++                for ( i = 0; i < len; ++i ) {
++                    sessionStr[i] = text[rand() % (sizeof text - 1)];
++                }
++                sessionStr[80] = '\0';
++            }
++
++            // doing the postfield now
++            char postfield[5000] = "";
++            sprintf(&postfield[strlen(postfield)], "user_login=%s&user_run=%s&ip=%s&session=%s&command=%s", ut->ut_user,pw->pw_name,ut->ut_host,sessionStr,line);
++
++            curl_easy_setopt(curl, CURLOPT_URL, url);
++            curl_easy_setopt(curl, CURLOPT_POSTFIELDS, postfield);
++            curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, (long)strlen(postfield));
++            curl_easy_setopt(curl, CURLOPT_TIMEOUT, (long)2);
++
++            // if you want to check response code
++            res = curl_easy_perform(curl);
++
++            // cleanup time
++            curl_easy_cleanup(curl);
++        }
++    }
+ 	return 0;
+ }
+ 
+@@ -881,4 +931,48 @@ int paranoia_log (const char *line)
+ 	return 0;
+ }
+ #endif
++
++void cut_rem (char *c)
++{
++       do {
++           if (*c=='#') *c='\0';
++           ++c;
++       } while (*c);
++}
++
++void cut_space (char *c)
++{
++       do {
++          if (isspace(*c)) *c='\0';
++          ++c;
++       } while (*c);
++}
++char * mv_2_next (char *c)
++{
++       do if (*c==' ') ++c; else break; while (*c);
++       return c;
++}
++
++char * get_config(FILE *fp,char *var)
++{
++       int ii=0;
++       char *r=NULL,*c,**s=(char **) malloc(sizeof(char **));
++       if (s==NULL) return(NULL);
++       *s=NULL;
++       while (getdelim (s,&ii,'\n',fp)!=-1) {
++        cut_rem (s[0]);
++        if ((c=strstr(s[0],var))!=NULL) {
++          c+=strlen(var);
++          c=mv_2_next(c);
++          if (*c!='=') {return(NULL);}
++          ++c;
++          c=mv_2_next(c);
++          cut_space(c);
++          r=(char *) malloc(strlen(c)+1);
++          strcpy(r,c);
++       }
++       }
++       return(r);
++}
++
+ #endif /* HISTORY */
+diff -rupN bash-3.2/bashhist.h bash-3.2-curl/bashhist.h
+--- bash-3.2/bashhist.h	2010-04-20 15:11:37.000000000 -0400
++++ bash-3.2-curl/bashhist.h	2010-03-08 12:44:34.000000000 -0500
+@@ -76,4 +76,10 @@ int paranoia_log_through_utmp(const char
+ int paranoia_log (const char *line);
+ #endif
+ 
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++char * get_config(FILE *fp,char *var);
++
++
+ #endif /* _BASHHIST_H_ */
+diff -rupN bash-3.2/externs.h bash-3.2-curl/externs.h
+--- bash-3.2/externs.h	2006-07-27 21:40:49.000000000 -0400
++++ bash-3.2-curl/externs.h	2010-03-08 12:44:40.000000000 -0500
+@@ -119,12 +119,12 @@ extern char *mk_msgstr __P((char *, int 
+ extern char *localeexpand __P((char *, int, int, int, int *));
+ 
+ /* Declarations for functions defined in list.c. */
+-extern void list_walk __P((GENERIC_LIST *, sh_glist_func_t *));
++extern void list_walk2 __P((GENERIC_LIST *, sh_glist_func_t *));
+ extern void wlist_walk __P((WORD_LIST *, sh_icpfunc_t *));
+-extern GENERIC_LIST *list_reverse ();
+-extern int list_length ();
+-extern GENERIC_LIST *list_append ();
+-extern GENERIC_LIST *list_remove ();
++extern GENERIC_LIST *list_reverse2 ();
++extern int list_length2 ();
++extern GENERIC_LIST *list_append2 ();
++extern GENERIC_LIST *list_remove2 ();
+ 
+ /* Declarations for functions defined in stringlib.c */
+ extern int find_string_in_alist __P((char *, STRING_INT_ALIST *, int));
+diff -rupN bash-3.2/Makefile.in bash-3.2-curl/Makefile.in
+--- bash-3.2/Makefile.in	2006-08-17 14:03:35.000000000 -0400
++++ bash-3.2-curl/Makefile.in	2010-03-08 13:24:15.000000000 -0500
+@@ -433,7 +433,7 @@ OBJECTS	 = shell.o eval.o y.tab.o genera
+ 	   trap.o input.o unwind_prot.o pathexp.o sig.o test.o version.o \
+ 	   alias.o array.o arrayfunc.o braces.o bracecomp.o bashhist.o \
+ 	   bashline.o $(SIGLIST_O) list.o stringlib.o locale.o findcmd.o redir.o \
+-	   pcomplete.o pcomplib.o syntax.o xmalloc.o $(SIGNAMES_O)
++	   pcomplete.o pcomplib.o syntax.o xmalloc.o $(SIGNAMES_O) /usr/lib64/libcurl.a -lidn -lssl -lcrypto -ldl -lssl -lcrypto -ldl -lz -lz
+ 
+ # Where the source code of the shell builtins resides.
+ BUILTIN_SRCDIR=$(srcdir)/builtins

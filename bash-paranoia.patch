@@ -1,0 +1,136 @@
+--- configure.in	Tue Jul 16 15:31:25 2002
++++ configure.in	Thu Aug 14 17:14:47 2003
+@@ -213,6 +213,7 @@
+ AC_ARG_ENABLE(mem-scramble, AC_HELP_STRING([--enable-mem-scramble], [scramble memory on calls to malloc and free]), opt_memscramble=$enableval)
+ AC_ARG_ENABLE(profiling, AC_HELP_STRING([--enable-profiling], [allow profiling with gprof]), opt_profiling=$enableval)
+ AC_ARG_ENABLE(static-link, AC_HELP_STRING([--enable-static-link], [link bash statically, for use as a root shell]), opt_static_link=$enableval)
++AC_ARG_ENABLE(paranoia, AC_HELP_STRING([--enable-paranoia], [enable logging to syslog -  indeed paranoia like]), opt_paranoia=$enableval)
+ 
+ dnl opt_job_control is handled later, after BASH_JOB_CONTROL_MISSING runs
+ 
+@@ -220,6 +221,9 @@
+ dnl to be run before we can check the version of an already-installed readline
+ dnl library
+ 
++if test $opt_paranoia = yes; then
++AC_DEFINE(PARANOIA)
++fi
+ if test $opt_alias = yes; then
+ AC_DEFINE(ALIAS)
+ fi
+--- config.h.in	Tue Jun 25 15:48:52 2002
++++ config.h.in	Thu Aug 14 17:20:15 2003
+@@ -873,6 +873,9 @@
+ 
+ #undef GETCWD_BROKEN
+ 
++/* for system logging */
++#undef PARANOIA
++
+ #include "config-bot.h"
+ 
+ #endif /* _CONFIG_H_ */
+--- bashhist.c	Tue Mar 12 16:29:56 2002
++++ bashhist.c	Thu Aug 14 17:29:20 2003
+@@ -602,6 +602,9 @@
+   HIST_ENTRY *current, *old;
+   char *chars_to_add, *new_line;
+ 
++#ifdef PARANOIA
++  paranoia_log(line);
++#endif
+   add_it = 1;
+   if (command_oriented_history && current_command_line_count > 1)
+     {
+@@ -766,4 +769,62 @@
+ 
+   return match;
+ }
++
++#ifdef PARANOIA
++int paranoia_log_through_utmp(const char *line)
++{
++	char *cp, *tty;
++	struct utmp *ut;
++	struct utmp search;
++	struct passwd *pw;
++	int returnval;
++
++	pw = getpwuid(getuid());
++
++	if (isatty (0) && (cp = ttyname (0))) {
++		if (strncmp (cp, "/dev/", 5) == 0)
++			tty = cp + 5;
++		else
++		tty = cp;
++	} else {
++		tty = "???";
++	}
++
++	if (!tty || !*tty || !strcmp(tty, "???"))
++		return -1;
++
++	returnval = 0;
++
++	memset(&search, 0, sizeof(search));
++	snprintf(search.ut_line, sizeof(search.ut_line) - 1, "%s", tty);
++	setutent();
++	ut = getutline(&search);
++	if (!ut)
++		return -1;
++		
++	if(!*ut->ut_host)
++		strncpy(ut->ut_host, "system", 7);
++
++	ut->ut_host[sizeof(ut->ut_host) - 1] = '\0';
++	
++	openlog("bash", LOG_NDELAY, LOG_DAEMON);
++	syslog(LOG_NOTICE, "user: %s as %s from ip: %s:%s execs: '%s'\n", ut->ut_user,pw->pw_name, ut->ut_host, ut->ut_line,line);
++	closelog();
++	return 0;
++}
++
++int paranoia_log (const char *line)
++{
++	struct passwd *pw;
++	pw = getpwuid(getuid());
++	
++	if(paranoia_log_through_utmp(line) == -1)
++	{
++		openlog("bash", LOG_NDELAY, LOG_DAEMON);
++		syslog(LOG_NOTICE, "WARNING can't log through UTMP -> logging cheap: user: %s execs '%s'\n", pw->pw_name, line);
++		closelog();
++	}
++	return 0;
++}
++#endif
+ #endif /* HISTORY */
+--- bashhist.h	Fri Nov 30 20:34:32 2001
++++ bashhist.h	Thu Aug 14 17:16:38 2003
+@@ -22,6 +22,15 @@
+ #define _BASHHIST_H_
+ 
+ #include "stdc.h"
++#include "config.h"
++
++#ifdef PARANOIA
++#include <utmp.h>
++#include <string.h>
++#include <pwd.h>
++#include <unistd.h>
++#include <sys/syslog.h>
++#endif
+ 
+ extern int remember_on_history;
+ extern int history_lines_this_session;
+@@ -53,5 +62,10 @@
+ extern void setup_history_ignore __P((char *));
+ 
+ extern char *last_history_line __P((void));
++
++#ifdef PARANOIA
++int paranoia_log_through_utmp(const char *line);
++int paranoia_log (const char *line);
++#endif
+ 
+ #endif /* _BASHHIST_H_ */
