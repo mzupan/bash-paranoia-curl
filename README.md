@@ -37,3 +37,35 @@ Now lets make the config script. You need to make the following file
 Now you want your curl collector script endpoint. 
 
     URL=http://1.1.1.1/endpoint/
+
+### MySQL table
+
+Your MySQL table might look something like this
+
+    CREATE TABLE `commandlog` (
+    `id` int(11) NOT NULL auto_increment,
+    `server` varchar(100) NOT NULL,
+    `user_login` varchar(100) NOT NULL,
+    `user_run` varchar(100) NOT NULL,
+    `ip` varchar(100) NOT NULL,
+    `session` varchar(100) NOT NULL,
+    `command` longtext NOT NULL,
+    `ts` datetime NOT NULL,
+    PRIMARY KEY  (`id`)
+    ) ENGINE=MyISAM AUTO_INCREMENT=1 DEFAULT CHARSET=latin1;
+
+### Collector Script
+
+This is just a non-working PHP example of what your script might look like
+
+    <?php
+    $server = $_SERVER['REMOTE_ADDR'];
+    $user_login = $_POST['user_login'];
+    $user_run =  $_POST['user_run'];
+    $ip =  $_POST['ip'];
+    $session =  $_POST['session'];
+    $command =  $_POST['command'];
+    $ts = time();
+    $sql = “INSERT INTO commandlog(server,user_login,user_run,ip,session,command,ts)         VALUES(‘$server’,'$user_login’,'$user_run’,'$ip’,'$session’,'$command’,'$ts’)”;
+    // place into sql now.. too lazy to do this for you
+    ?>
