@@ -26,7 +26,7 @@ Now apply the curl patch. This patch assumes you have 64bit OS installed. You ca
 
 Now lets compile bash. 
 
-    ./configure ––enable-paranoia #you can include  other configure flags here
+    ./configure --enable-paranoia #you can include  other configure flags here
     make
     make install
 
