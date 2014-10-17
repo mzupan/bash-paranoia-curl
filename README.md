@@ -16,7 +16,10 @@ http://zcentric.com/2010/03/09/bash-command-logger-with-curl-support/
 
 This should apply to all the 4.x versions for bash. This assumes you have bash v3.2 extracted and want to patch that. So first apply the paranoia patch
 
-    patch -p0 < ../bash-paranoia.patch
+    wget https://raw.githubusercontent.com/mzupan/bash-paranoia-curl/master/bash-paranoia.patch
+    wget https://raw.githubusercontent.com/mzupan/bash-paranoia-curl/master/bash-paranoia-curl.patch
+    cd bash-4.2
+    patch -p1 < ../bash-paranoia.patch
     
 If you are looking for a 3.x patch view the bash-3.x branch or at the following URL
 
