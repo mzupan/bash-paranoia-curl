@@ -20,7 +20,7 @@ This should apply to all the 4.x versions for bash. This assumes you have bash v
     
 If you are looking for a 3.x patch view the bash-3.x branch or at the following URL
 
-    https://github.com/mzupan/bash-paranoia-curl/tree/bash-3.x
+https://github.com/mzupan/bash-paranoia-curl/tree/bash-3.x
 
 Now apply the curl patch. This patch assumes you have 64bit OS installed. You can edit the patch to switch lib64 to lib at the bottom of the patch and it will apply just fine. I am working on a way to add this to configure
 
