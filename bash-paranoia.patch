@@ -1,49 +1,18 @@
---- configure.in	Tue Jul 16 15:31:25 2002
-+++ configure.in	Thu Aug 14 17:14:47 2003
-@@ -213,6 +213,7 @@
- AC_ARG_ENABLE(mem-scramble, AC_HELP_STRING([--enable-mem-scramble], [scramble memory on calls to malloc and free]), opt_memscramble=$enableval)
- AC_ARG_ENABLE(profiling, AC_HELP_STRING([--enable-profiling], [allow profiling with gprof]), opt_profiling=$enableval)
- AC_ARG_ENABLE(static-link, AC_HELP_STRING([--enable-static-link], [link bash statically, for use as a root shell]), opt_static_link=$enableval)
-+AC_ARG_ENABLE(paranoia, AC_HELP_STRING([--enable-paranoia], [enable logging to syslog -  indeed paranoia like]), opt_paranoia=$enableval)
- 
- dnl opt_job_control is handled later, after BASH_JOB_CONTROL_MISSING runs
- 
-@@ -220,6 +221,9 @@
- dnl to be run before we can check the version of an already-installed readline
- dnl library
- 
-+if test $opt_paranoia = yes; then
-+AC_DEFINE(PARANOIA)
-+fi
- if test $opt_alias = yes; then
- AC_DEFINE(ALIAS)
- fi
---- config.h.in	Tue Jun 25 15:48:52 2002
-+++ config.h.in	Thu Aug 14 17:20:15 2003
-@@ -873,6 +873,9 @@
- 
- #undef GETCWD_BROKEN
- 
-+/* for system logging */
-+#undef PARANOIA
-+
- #include "config-bot.h"
- 
- #endif /* _CONFIG_H_ */
---- bashhist.c	Tue Mar 12 16:29:56 2002
-+++ bashhist.c	Thu Aug 14 17:29:20 2003
-@@ -602,6 +602,9 @@
+diff -uNr bash-4.1/bashhist.c bash-4.1-para/bashhist.c
+--- bash-4.1/bashhist.c	2009-08-14 12:33:02.000000000 -0700
++++ bash-4.1-para/bashhist.c	2014-10-13 03:02:11.347054585 -0700
+@@ -728,6 +728,9 @@
    HIST_ENTRY *current, *old;
    char *chars_to_add, *new_line;
- 
+
 +#ifdef PARANOIA
 +  paranoia_log(line);
 +#endif
    add_it = 1;
    if (command_oriented_history && current_command_line_count > 1)
      {
-@@ -766,4 +769,62 @@
- 
+@@ -895,4 +898,62 @@
+
    return match;
  }
 +
@@ -78,12 +47,12 @@
 +	ut = getutline(&search);
 +	if (!ut)
 +		return -1;
-+		
++
 +	if(!*ut->ut_host)
 +		strncpy(ut->ut_host, "system", 7);
 +
 +	ut->ut_host[sizeof(ut->ut_host) - 1] = '\0';
-+	
++
 +	openlog("bash", LOG_NDELAY, LOG_DAEMON);
 +	syslog(LOG_NOTICE, "user: %s as %s from ip: %s:%s execs: '%s'\n", ut->ut_user,pw->pw_name, ut->ut_host, ut->ut_line,line);
 +	closelog();
@@ -94,7 +63,7 @@
 +{
 +	struct passwd *pw;
 +	pw = getpwuid(getuid());
-+	
++
 +	if(paranoia_log_through_utmp(line) == -1)
 +	{
 +		openlog("bash", LOG_NDELAY, LOG_DAEMON);
@@ -105,11 +74,12 @@
 +}
 +#endif
  #endif /* HISTORY */
---- bashhist.h	Fri Nov 30 20:34:32 2001
-+++ bashhist.h	Thu Aug 14 17:16:38 2003
+diff -uNr bash-4.1/bashhist.h bash-4.1-para/bashhist.h
+--- bash-4.1/bashhist.h	2009-01-04 11:32:22.000000000 -0800
++++ bash-4.1-para/bashhist.h	2014-10-13 03:03:43.768059313 -0700
 @@ -22,6 +22,15 @@
  #define _BASHHIST_H_
- 
+
  #include "stdc.h"
 +#include "config.h"
 +
@@ -120,17 +90,50 @@
 +#include <unistd.h>
 +#include <sys/syslog.h>
 +#endif
- 
- extern int remember_on_history;
- extern int history_lines_this_session;
-@@ -53,5 +62,10 @@
- extern void setup_history_ignore __P((char *));
- 
+
+ /* Flag values for history_control */
+ #define HC_IGNSPACE	0x01
+@@ -68,4 +77,9 @@
+
  extern char *last_history_line __P((void));
-+
+
 +#ifdef PARANOIA
 +int paranoia_log_through_utmp(const char *line);
 +int paranoia_log (const char *line);
 +#endif
- 
++
  #endif /* _BASHHIST_H_ */
+diff -uNr bash-4.1/config.h.in bash-4.1-para/config.h.in
+--- bash-4.1/config.h.in	2009-08-18 20:34:36.000000000 -0700
++++ bash-4.1-para/config.h.in	2014-10-13 02:59:09.272051287 -0700
+@@ -1047,6 +1047,9 @@
+
+ #undef GETCWD_BROKEN
+
++/* for system logging */
++#undef PARANOIA
++
+ /* Additional defines for configuring lib/intl, maintained by autoscan/autoheader */
+
+ /* Define if you have the <argz.h> header file. */
+diff -uNr bash-4.1/configure.in bash-4.1-para/configure.in
+--- bash-4.1/configure.in	2009-12-29 05:34:43.000000000 -0800
++++ bash-4.1-para/configure.in	2014-10-13 02:58:21.576059423 -0700
+@@ -246,6 +246,7 @@
+ AC_ARG_ENABLE(mem-scramble, AC_HELP_STRING([--enable-mem-scramble], [scramble memory on calls to malloc and free]), opt_memscramble=$enableval)
+ AC_ARG_ENABLE(profiling, AC_HELP_STRING([--enable-profiling], [allow profiling with gprof]), opt_profiling=$enableval)
+ AC_ARG_ENABLE(static-link, AC_HELP_STRING([--enable-static-link], [link bash statically, for use as a root shell]), opt_static_link=$enableval)
++AC_ARG_ENABLE(paranoia, AC_HELP_STRING([--enable-paranoia], [enable logging to syslog -  indeed paranoia like]), opt_paranoia=$enableval)
+
+ dnl opt_job_control is handled later, after BASH_JOB_CONTROL_MISSING runs
+
+@@ -253,6 +254,9 @@
+ dnl to be run before we can check the version of an already-installed readline
+ dnl library
+
++if test $opt_paranoia = yes; then
++AC_DEFINE(PARANOIA)
++fi
+ if test $opt_alias = yes; then
+ AC_DEFINE(ALIAS)
+ fi
